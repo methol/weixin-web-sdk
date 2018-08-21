@@ -18,7 +18,7 @@ dependencies {
     compile 'com.squareup.okhttp3:okhttp-urlconnection:3.11.0'
     compile 'org.slf4j:slf4j-api:1.7.25'
     compileOnly 'org.projectlombok:lombok:1.18.2'
-//    testCompile 'ch.qos.logback:logback-classic:1.2.3'
+    testCompile 'ch.qos.logback:logback-classic:1.2.3'
     testCompile('org.junit.jupiter:junit-jupiter-api:5.2.0')
 
     apt "org.projectlombok:lombok:1.18.2"
