@@ -1,0 +1,25 @@
+plugins {
+    id 'java'
+    id 'net.ltgt.apt' version '0.10'
+}
+
+group 'io.github.swim2sun'
+version '1.0-SNAPSHOT'
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'org.json:json:20180130'
+    compile 'com.squareup.okhttp3:okhttp:3.11.0'
+    compile 'com.squareup.okhttp3:okhttp-urlconnection:3.11.0'
+    compile 'org.slf4j:slf4j-api:1.7.25'
+    compileOnly 'org.projectlombok:lombok:1.18.2'
+//    testCompile 'ch.qos.logback:logback-classic:1.2.3'
+    testCompile('org.junit.jupiter:junit-jupiter-api:5.2.0')
+
+    apt "org.projectlombok:lombok:1.18.2"
+}
