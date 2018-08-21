@@ -62,8 +62,8 @@ publishing {
                     }
                 }
                 scm {
-                    connection = 'scm:git:git@github.com:swim2sun/weixin-web-sdk.git'
-                    developerConnection = 'scm:git:git@github.com:swim2sun/weixin-web-sdk.git'
+                    connection = 'scm:git:https://github.com/swim2sun/weixin-web-sdk.git'
+                    developerConnection = 'scm:git:https://github.com/swim2sun/weixin-web-sdk.git'
                     url = 'https://github.com/swim2sun/weixin-web-sdk'
                 }
             }
@@ -72,8 +72,8 @@ publishing {
     repositories {
         maven {
             credentials {
-                username "$mavenUser"
-                password "$mavenPassword"
+                username "$ossrhUsername"
+                password "$ossrhPassword"
             }
             def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
             def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots"
