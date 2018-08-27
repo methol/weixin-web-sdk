@@ -8,6 +8,7 @@ import org.json.JSONObject;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -37,12 +38,16 @@ public class Weixin implements AutoCloseable {
   private Http http;
   private ExecutorService executorService;
   private Set<WeixinMsgListener> listeners;
+  private AtomicInteger errorTimes;
+
+  // todo online method
 
   private Weixin() {
     deviceId = generateDeviceId();
     http = new Http();
     listeners = new HashSet<>();
     executorService = Executors.newCachedThreadPool();
+    errorTimes = new AtomicInteger(0);
   }
 
   /**
@@ -123,7 +128,7 @@ public class Weixin implements AutoCloseable {
    * @param username weixin username
    * @return user instance
    */
-  public User findUser(String username) {
+  User findUserByUsername(String username) {
     if (user.getUserName().equals(username)) {
       return user;
     }
@@ -277,28 +282,40 @@ public class Weixin implements AutoCloseable {
   private void syncCheck() {
     String url = "https://webpush.wx2.qq.com/cgi-bin/mmwebwx-bin/synccheck";
     Pattern pattern = Pattern.compile("\\{retcode:\"(.+?)\",selector:\"(.+?)\"\\}");
-    while (true) {
-      Map<String, String> params = new HashMap<>();
-      params.put("r", "" + System.currentTimeMillis());
-      params.put("skey", skey);
-      params.put("sid", sid);
-      params.put("uin", uin);
-      params.put("deviceid", deviceId);
-      params.put("synckey", syncKeyStr);
-      params.put("_", "" + System.currentTimeMillis());
-      String resp = http.get(url, params);
-      Matcher matcher = pattern.matcher(resp);
-      checkState(matcher.find(), "can't find ret code: " + resp);
-      String retCode = matcher.group(1);
-      String selector = matcher.group(2);
-      if (retCode.equals("1100")) {
-        log.info("已下线");
-        break;
+    try {
+      while (true) {
+        Map<String, String> params = new HashMap<>();
+        params.put("r", "" + System.currentTimeMillis());
+        params.put("skey", skey);
+        params.put("sid", sid);
+        params.put("uin", uin);
+        params.put("deviceid", deviceId);
+        params.put("synckey", syncKeyStr);
+        params.put("_", "" + System.currentTimeMillis());
+        String resp = http.get(url, params);
+        Matcher matcher = pattern.matcher(resp);
+        checkState(matcher.find(), "can't find ret code: " + resp);
+        String retCode = matcher.group(1);
+        String selector = matcher.group(2);
+        if (retCode.equals("1100")) {
+          log.info("已下线");
+          break;
+        }
+        checkState(retCode.equals("0"), "ret code not valid: " + retCode);
+        if (selector.equals("2")) {
+          sync();
+        }
+        if (errorTimes.intValue() > 0) {
+          errorTimes.set(0);
+        }
       }
-      checkState(retCode.equals("0"), "ret code not valid: " + retCode);
-      if (selector.equals("2")) {
-        sync();
+    } catch (Exception e) {
+      log.error("synce check error", e);
+      if (errorTimes.intValue() >= 5) {
+        log.warn("give up sync check");
+        return;
       }
+      syncCheck();
     }
   }
 

@@ -64,7 +64,7 @@ public class Sample {
     weixin.addMsgListener(msg -> System.out.println("收到消息：" + msg.getContent()));
     
     // 发送消息
-    User receiver = weixin.findUserByNickname("Xiangyang Pro 2.0"); // 接收方的微信昵称
+    User receiver = weixin.findUserByNickname("xxx"); // 接收方的微信昵称
     Message msg = Message.builder().type(Message.Type.TEXT).content("测试").to(receiver).build();
     weixin.sendMsg(msg);
   }

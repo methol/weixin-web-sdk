@@ -38,8 +38,8 @@ public class Message {
     }
     String content = json.getString("Content");
     return Message.builder()
-        .from(weixin.findUser(fromUserName))
-        .to(weixin.findUser(toUserName))
+        .from(weixin.findUserByUsername(fromUserName))
+        .to(weixin.findUserByUsername(toUserName))
         .type(type)
         .content(content)
         .build();
