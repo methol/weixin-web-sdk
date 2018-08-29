@@ -311,7 +311,8 @@ public class Weixin implements AutoCloseable {
       }
     } catch (Exception e) {
       log.error("synce check error", e);
-      if (errorTimes.intValue() >= 5) {
+      int currentTimes = errorTimes.incrementAndGet();
+      if (currentTimes >= 5) {
         log.warn("give up sync check");
         return;
       }
