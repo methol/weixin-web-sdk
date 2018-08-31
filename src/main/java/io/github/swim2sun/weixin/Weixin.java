@@ -13,7 +13,6 @@ import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static io.github.swim2sun.weixin.Preconditions.checkState;
 
@@ -26,28 +25,24 @@ import static io.github.swim2sun.weixin.Preconditions.checkState;
  */
 @Slf4j
 public class Weixin implements AutoCloseable {
-  private String deviceId;
-  private String passTicket;
-  private String skey;
-  private String sid;
-  private String uin;
-  private String syncKeyStr;
-  private JSONObject syncKey;
+  private Context context;
   @Getter private User user;
   private List<User> contactList;
   private Http http;
   private ExecutorService executorService;
   private Set<WeixinMsgListener> listeners;
   private AtomicInteger errorTimes;
+  private volatile boolean online;
 
   // todo online method
 
   private Weixin() {
-    deviceId = generateDeviceId();
+    context = new Context();
     http = new Http();
     listeners = new HashSet<>();
     executorService = Executors.newCachedThreadPool();
     errorTimes = new AtomicInteger(0);
+    online = false;
   }
 
   /**
@@ -57,6 +52,10 @@ public class Weixin implements AutoCloseable {
    */
   public static Weixin create() {
     return new Weixin();
+  }
+
+  public boolean online() {
+    return online;
   }
 
   /** close resources */
@@ -95,6 +94,9 @@ public class Weixin implements AutoCloseable {
             code = queryLoginResult(uuid);
           } while (code.equals("408") || code.equals("201"));
           boolean succeed = "200".equals(code);
+          if (succeed) {
+            online = true;
+          }
           callback.accept(succeed, succeed ? "success" : "fail");
         });
     return "https://login.weixin.qq.com/qrcode/" + uuid;
@@ -110,7 +112,7 @@ public class Weixin implements AutoCloseable {
       String url =
           String.format(
               "https://wx2.qq.com/cgi-bin/mmwebwx-bin/webwxgetcontact?lang=zh_CN&pass_ticket=%s&r=%s&seq=0&skey=%s",
-              passTicket, System.currentTimeMillis(), skey);
+              context.getPassTicket(), System.currentTimeMillis(), context.getSkey());
       String respBody = http.get(url);
       JSONObject resp = new JSONObject(respBody);
       checkState(resp.getJSONObject("BaseResponse").getInt("Ret") == 0, "ret is not equals to 0");
@@ -160,7 +162,8 @@ public class Weixin implements AutoCloseable {
    */
   public void sendMsg(Message msg) {
     String url =
-        "https://wx2.qq.com/cgi-bin/mmwebwx-bin/webwxsendmsg?lang=zh_CN&pass_ticket=" + passTicket;
+        "https://wx2.qq.com/cgi-bin/mmwebwx-bin/webwxsendmsg?lang=zh_CN&pass_ticket="
+            + context.getPassTicket();
     JSONObject reqBody =
         new JSONObject()
             .put("BaseRequest", getBaseRequest())
@@ -218,10 +221,10 @@ public class Weixin implements AutoCloseable {
     String resp = http.get("https://wx2.qq.com/cgi-bin/mmwebwx-bin/webwxnewloginpage", params);
     String ret = XmlUtil.get(resp, "ret");
     checkState("0".equals(ret), "ret not equals '0' : " + resp);
-    this.skey = XmlUtil.get(resp, "skey");
-    this.sid = XmlUtil.get(resp, "wxsid");
-    this.uin = XmlUtil.get(resp, "wxuin");
-    this.passTicket = XmlUtil.get(resp, "pass_ticket");
+    this.context.setSkey(XmlUtil.get(resp, "skey"));
+    this.context.setSid(XmlUtil.get(resp, "wxsid"));
+    this.context.setUin(XmlUtil.get(resp, "wxuin"));
+    this.context.setPassTicket(XmlUtil.get(resp, "pass_ticket"));
     init();
   }
 
@@ -229,14 +232,14 @@ public class Weixin implements AutoCloseable {
     String url =
         String.format(
             "https://wx2.qq.com/cgi-bin/mmwebwx-bin/webwxinit?pass_ticket=%s&skey=%s&r=%s",
-            passTicket, skey, System.currentTimeMillis());
+            context.getPassTicket(), context.getSkey(), System.currentTimeMillis());
     JSONObject baseRequest = getBaseRequest();
     JSONObject body = new JSONObject().put("BaseRequest", baseRequest);
     String respBody = http.postJson(url, body.toString());
     log.trace("weixin init response: {}", respBody);
     JSONObject resp = new JSONObject(respBody);
     checkState(resp.getJSONObject("BaseResponse").getInt("Ret") == 0, "ret not equals to 0");
-    checkState(resp.getString("SKey").equals(skey), "skey changed");
+    checkState(resp.getString("SKey").equals(context.getSkey()), "skey changed");
     this.user = User.parse(resp.getJSONObject("User"));
     log.debug("user info: {}", user);
     updateSyncKey(resp.getJSONObject("SyncKey"));
@@ -245,17 +248,17 @@ public class Weixin implements AutoCloseable {
 
   private JSONObject getBaseRequest() {
     return new JSONObject()
-        .put("Uin", uin)
-        .put("Sid", sid)
-        .put("Skey", skey)
-        .put("DeviceID", deviceId);
+        .put("Uin", context.getUin())
+        .put("Sid", context.getSid())
+        .put("Skey", context.getSkey())
+        .put("DeviceID", context.getDeviceId());
   }
 
   private void statusNotify() {
     String url =
         String.format(
             "https://wx2.qq.com/cgi-bin/mmwebwx-bin/webwxstatusnotify?lang=zh_CN&pass_ticket=%s",
-            passTicket);
+            context.getPassTicket());
     JSONObject reqBody =
         new JSONObject()
             .put("BaseRequest", getBaseRequest())
@@ -286,11 +289,11 @@ public class Weixin implements AutoCloseable {
       while (true) {
         Map<String, String> params = new HashMap<>();
         params.put("r", "" + System.currentTimeMillis());
-        params.put("skey", skey);
-        params.put("sid", sid);
-        params.put("uin", uin);
-        params.put("deviceid", deviceId);
-        params.put("synckey", syncKeyStr);
+        params.put("skey", context.getSkey());
+        params.put("sid", context.getSid());
+        params.put("uin", context.getUin());
+        params.put("deviceid", context.getDeviceId());
+        params.put("synckey", context.getSyncKeyStr());
         params.put("_", "" + System.currentTimeMillis());
         String resp = http.get(url, params);
         Matcher matcher = pattern.matcher(resp);
@@ -299,21 +302,32 @@ public class Weixin implements AutoCloseable {
         String selector = matcher.group(2);
         if (retCode.equals("1100")) {
           log.info("已下线");
+          online = false;
+          break;
+        }
+        if (retCode.equals("1102")) {
+          log.warn("该账号手机上主动退出了");
+          online = false;
           break;
         }
         checkState(retCode.equals("0"), "ret code not valid: " + retCode);
         if (selector.equals("2")) {
           sync();
         }
+        if (selector.equals("3")) {
+          log.warn("selector equals 3 !");
+          Thread.sleep(60 * 1000);
+        }
         if (errorTimes.intValue() > 0) {
           errorTimes.set(0);
         }
       }
     } catch (Exception e) {
-      log.error("synce check error", e);
+      log.error("sync check error", e);
       int currentTimes = errorTimes.incrementAndGet();
       if (currentTimes >= 5) {
         log.warn("give up sync check");
+        online = false;
         return;
       }
       syncCheck();
@@ -324,11 +338,11 @@ public class Weixin implements AutoCloseable {
     String url =
         String.format(
             "https://wx2.qq.com/cgi-bin/mmwebwx-bin/webwxsync?sid=%s&skey=%s&lang=zh_CN&pass_ticket=%s",
-            sid, skey, passTicket);
+            context.getSid(), context.getSkey(), context.getPassTicket());
     JSONObject reqBody =
         new JSONObject()
             .put("BaseRequest", getBaseRequest())
-            .put("SyncKey", syncKey)
+            .put("SyncKey", context.getSyncKey())
             .put("rr", ~System.currentTimeMillis());
     String respBody = http.postJson(url, reqBody.toString());
     JSONObject resp = new JSONObject(respBody);
@@ -365,19 +379,7 @@ public class Weixin implements AutoCloseable {
       sb.append(pair.getInt("Key")).append("_").append(pair.getInt("Val")).append("|");
     }
     sb.deleteCharAt(sb.length() - 1);
-    this.syncKeyStr = sb.toString();
-    this.syncKey = syncKey;
-  }
-
-  /**
-   * generate device id
-   *
-   * @return e + 15 * random number
-   */
-  static String generateDeviceId() {
-    Random random = new Random();
-    StringBuilder sb = new StringBuilder("e");
-    IntStream.range(0, 15).forEach(i -> sb.append(random.nextInt(10)));
-    return sb.toString();
+    this.context.setSyncKeyStr(sb.toString());
+    this.context.setSyncKey(syncKey);
   }
 }
